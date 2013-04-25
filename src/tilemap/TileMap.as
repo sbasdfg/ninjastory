@@ -10,6 +10,7 @@ package tilemap
 	import citrus.input.controllers.Keyboard;
 	import citrus.math.MathVector;
 	import citrus.objects.Box2DPhysicsObject;
+	import citrus.objects.CitrusSprite;
 	import citrus.objects.platformer.box2d.Hero;
 	import citrus.objects.platformer.box2d.Platform;
 	import citrus.physics.box2d.Box2D;
@@ -19,6 +20,7 @@ package tilemap
 	import entities.Climbers.RopeVerticle;
 	import entities.Enemy.Enemy;
 	import entities.Enemy.TrainingDummy;
+	import entities.Interface.LevelGUI.TextFlyby;
 	import entities.Platforms.RopeHorizontal;
 	import entities.Player2;
 	import entities.Sensors.EnemyAINode;
@@ -30,6 +32,9 @@ package tilemap
 	import entities.Weapons.RangedWeapons.Shuriken;
 	import flash.display.Bitmap;
 	import flash.geom.Rectangle;
+	import starling.display.Image;
+	import starling.display.Quad;
+	import starling.display.Sprite;
 	import starling.textures.Texture;
 	import starling.textures.TextureAtlas;
 	
@@ -102,6 +107,7 @@ package tilemap
 			hero.onFireWeapon.add(fireWeapon);
 			hero.onMeleeWeapon.add(swingWeapon);
 			hero.doneSwinging.add(doneSwinging);
+			hero.onTakeDamage.add(heroDamage);
 			
 			rope.onHang.add(heroOnRope);
 			rope.onHangEnd.add(heroOffRope);
@@ -115,6 +121,12 @@ package tilemap
 			info.onContact.add(displayInfo);
 			
 			enemyAINode.onContact.add(enemyAICall);
+			
+			//addChild(new TextFlyby(750, 2350));
+			var borderbmp:Bitmap = new Assets.LEVELBG();
+			var borderTex:Texture = Texture.fromBitmap(borderbmp);
+			
+			//addChild(new Image(borderTex));
 			
 			var keyboard:Keyboard = CitrusEngine.getInstance().input.keyboard as Keyboard;
 			keyboard.addKeyAction("left", Keyboard.LEFT, 1);
@@ -167,6 +179,18 @@ package tilemap
 		public function heroOffRope():void
 		{
 			trace("Ain't Swingin'");
+		}
+		
+		public function heroDamage(textX:int, textY:int, textString:String):void
+		{
+			var damageTextContainer:CitrusSprite;
+			damageTextContainer = new CitrusSprite("dmgtxt", { x:textX, y:textY, view: new Sprite() } );
+			var damageText:TextFlyby = new TextFlyby(0, 0);
+			damageText.textColor = 0xFF0000;
+			damageText.textString = textString;
+			trace("Flyby Should say: " + textString);
+			(damageTextContainer.view as Sprite).addChild(damageText);
+			add(damageTextContainer);
 		}
 		
 		public function doneSwinging():void

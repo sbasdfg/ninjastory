@@ -9,12 +9,16 @@ package entities
 	import Box2D.Dynamics.Joints.b2WeldJoint;
 	import Box2D.Dynamics.Joints.b2WeldJointDef;
 	import citrus.core.CitrusEngine;
+	import citrus.objects.CitrusSprite;
 	import citrus.objects.platformer.box2d.Sensor;
 	import entities.Enemy.Enemy;
+	import entities.Interface.LevelGUI.TextFlyby;
 	import entities.Weapons.MeleeWeapons.MeleeWeapon;
 	import entities.Weapons.MeleeWeapons.Sword;
 	import entities.Weapons.RangedWeapons.Shuriken;
 	import feathers.motion.transitions.OldFadeNewSlideTransitionManager;
+	import starling.display.Sprite;
+	import flash.sampler.NewObjectSample;
 	import org.osflash.signals.natives.base.SignalBitmap;
 
 	import citrus.math.MathVector;
@@ -170,6 +174,8 @@ package entities
 		public var _isSwinging:Boolean = false;
 		protected var currentRope:*;
 
+		//Damage Flyby
+		private var _damageContainer:CitrusSprite;
 		
 		// Player Statistics
 		protected var _hitpoints:int = Globals.playerHP;
@@ -190,13 +196,16 @@ package entities
 			
 			onJump = new Signal();
 			onGiveDamage = new Signal();
-			onTakeDamage = new Signal();
+			onTakeDamage = new Signal(int, int, String);
 			onAnimationChange = new Signal();
 			onDeath = new Signal();
 			onFireWeapon = new Signal(String, String, Boolean, Object);
 			onMeleeWeapon = new Signal(String, String, Boolean, Boolean, Box2DPhysicsObject);
 			doneSwinging = new Signal();
 			//WeaponType:String, thrustDirection:String, enemyWeapon:Boolean, faceRight:Boolean, target:Box2DPhysicsObject
+			
+			_damageContainer = new CitrusSprite("dmgtxt", { view: new Sprite() } );
+			_ce.state.add(_damageContainer);
 			
 			//exitSommersalt();
 		}
@@ -403,6 +412,7 @@ package entities
 					doneSwinging.dispatch();
 					_canSwingAgain = false;
 					_isSwinging = false;
+					_isDoubleJumping = false;
 					_offRopeTimeoutID = setTimeout(setCanSwingAgain, 1000);
 					//velocity.x = maxVelocity;
 					//velocity.y = -jumpHeight;
@@ -527,8 +537,10 @@ package entities
 			_hurt = true;
 			controlsEnabled = false;
 			_hurtTimeoutID = setTimeout(endHurtState, hurtDuration);
-			onTakeDamage.dispatch();
-
+			onTakeDamage.dispatch(int(this.x - ((_width) * _box2D.scale)), int(this.y - (_height * _box2D.scale)), "" + damage);
+			
+			trace(_height);
+			
 			//Makes sure that the hero is not frictionless while his control is disabled
 			if (_playerMovingHero)
 			{
@@ -573,11 +585,14 @@ package entities
 		override public function handlePreSolve(contact:b2Contact, oldManifold:b2Manifold):void 
 		{
 			var other:IBox2DPhysicsObject = Box2DUtils.CollisionGetOther(this, contact);
+			var otherType:String = (other as Box2DPhysicsObject).name;
 
 			var heroTop:Number = y;
 			var objectBottom:Number = other.y + (other.height / 2);
 
 			if (_victory) contact.SetEnabled(false);
+			if (otherType == "ropewalk" && !Globals.canTightRopeWalk) contact.SetEnabled(false);
+			trace(otherType);
 		}
 
 		override public function handleBeginContact(contact:b2Contact):void {

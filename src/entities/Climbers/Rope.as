@@ -212,6 +212,9 @@ package entities.Climbers
 			revolutionJointDef.enableMotor = true;
 			revolutionJointDef.maxMotorTorque = 0.1;
 			revolutionJointDef.collideConnected = false;
+			revolutionJointDef.enableLimit = true;
+			revolutionJointDef.lowerAngle = deg2rad(0);
+			revolutionJointDef.upperAngle = deg2rad(180);
 			_vecRevoluteJointDef.push(revolutionJointDef);
 		}
 		
@@ -242,7 +245,7 @@ package entities.Climbers
 					
 					revolutionJoint(_vecBodyRope[targetJointIndex], hero.body, new b2Vec2(0, heightSegment / ws), heroAnchorOffset);
 					connectingJoint = _box2D.world.CreateJoint(_vecRevoluteJointDef[_vecRevoluteJointDef.length - 1]);
-					hero.body.SetFixedRotation(false);
+					//hero.body.SetFixedRotation(false);
 					hero.maxVelocity = maxSwingVelocity;
 					onHang.dispatch(this);
 					/**

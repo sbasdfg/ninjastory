@@ -16,10 +16,13 @@ package entities.Platforms
 			ropeAnchorLeft = new RopeAnchor("ropeanchor", { x:params.x - ((params.width - 25) / 2), y:params.y, height:25, width:25 } );
 			ropeAnchorRight = new RopeAnchor("ropeanchor", { x:params.x + ((params.width - 25) / 2), y:params.y, height:25, width:25 } );
 			
-			super(name, null, (params.width -50)/2, params.width /25);
+			super("ropewalk", null, (params.width -50)/2, params.width /25);
 			
 			_ce.state.add(ropeAnchorLeft);
 			_ce.state.add(ropeAnchorRight);
+			
+			leftAnchor = ropeAnchorLeft;
+			rightAnchor = ropeAnchorRight;
 		}
 		
 	}
