@@ -196,12 +196,12 @@ package entities
 			
 			onJump = new Signal();
 			onGiveDamage = new Signal();
-			onTakeDamage = new Signal(int, int, String);
+			onTakeDamage = new Signal(Box2DPhysicsObject, int);
 			onAnimationChange = new Signal();
 			onDeath = new Signal();
 			onFireWeapon = new Signal(String, String, Boolean, Object);
 			onMeleeWeapon = new Signal(String, String, Boolean, Boolean, Box2DPhysicsObject);
-			doneSwinging = new Signal();
+			doneSwinging = new Signal(Box2DPhysicsObject);
 			//WeaponType:String, thrustDirection:String, enemyWeapon:Boolean, faceRight:Boolean, target:Box2DPhysicsObject
 			
 			_damageContainer = new CitrusSprite("dmgtxt", { view: new Sprite() } );
@@ -245,6 +245,16 @@ package entities
 			
 			if (!_controlsEnabled)
 				_fixture.SetFriction(_friction);
+		}
+		
+		public function get playerHP():int
+		{
+			return _hitpoints
+		}
+		
+		public function set playerHP(hp:int):void
+		{
+			_hitpoints = hp;
 		}
 		
 		/**
@@ -409,7 +419,7 @@ package entities
 				
 				if (_ce.input.justDid("jump", inputChannel) && _isSwinging)
 				{
-					doneSwinging.dispatch();
+					doneSwinging.dispatch(currentRope);
 					_canSwingAgain = false;
 					_isSwinging = false;
 					_isDoubleJumping = false;
@@ -537,9 +547,8 @@ package entities
 			_hurt = true;
 			controlsEnabled = false;
 			_hurtTimeoutID = setTimeout(endHurtState, hurtDuration);
-			onTakeDamage.dispatch(int(this.x - ((_width) * _box2D.scale)), int(this.y - (_height * _box2D.scale)), "" + damage);
 			
-			trace(_height);
+			//trace(_height);
 			
 			//Makes sure that the hero is not frictionless while his control is disabled
 			if (_playerMovingHero)
@@ -549,6 +558,7 @@ package entities
 			}
 			
 			_hitpoints -= damage;
+			onTakeDamage.dispatch(this, damage);
 			if (_hitpoints <= 0) killPlayer();
 			//fling the hero
 			var hurtVelocity:b2Vec2 = _body.GetLinearVelocity();
@@ -592,7 +602,7 @@ package entities
 
 			if (_victory) contact.SetEnabled(false);
 			if (otherType == "ropewalk" && !Globals.canTightRopeWalk) contact.SetEnabled(false);
-			trace(otherType);
+			//trace(otherType);
 		}
 
 		override public function handleBeginContact(contact:b2Contact):void {

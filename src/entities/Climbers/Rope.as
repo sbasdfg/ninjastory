@@ -88,8 +88,8 @@ package entities.Climbers
 			ropeLength = newLength;
 			numSegments = ropeSegments;
 			
-			trace(ropeLength);
-			trace(numSegments);
+			//trace(ropeLength);
+			//trace(numSegments);
 			
 			super(name, params);
 			
@@ -237,7 +237,8 @@ package entities.Climbers
 			contact.SetEnabled(false);
 			if (Box2DUtils.CollisionGetOther(this, contact) is Player2)
 			{
-				if (!ropeAdded && !hero.body.GetJointList() && hero._canSwingAgain)
+				//trace ("Collision");
+				if (!ropeAdded && !hero.body.GetJointList() && hero._canSwingAgain && !hero.onGround)
 				{
 					targetJointIndex = int(((hero.getBody().GetPosition().y * ws - (hero.height) / 2) - _vecBodyRope[0].GetPosition().y * ws) / (heightSegment * 2 - 2));
 					if (targetJointIndex < 1) targetJointIndex = 1;

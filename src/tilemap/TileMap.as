@@ -1,10 +1,13 @@
 package tilemap 
 {
+	import Box2D.Common.Math.b2Vec2;
+	import Box2D.Dynamics.b2Fixture;
 	import Box2D.Dynamics.Joints.b2Joint;
 	import Box2D.Dynamics.Joints.b2JointDef;
 	import Box2D.Dynamics.Joints.b2WeldJoint;
 	import Box2D.Dynamics.Joints.b2WeldJointDef;
 	import citrus.core.CitrusEngine;
+	import citrus.core.CitrusObject;
 	import citrus.core.starling.StarlingState;
 	import citrus.core.State;
 	import citrus.input.controllers.Keyboard;
@@ -20,6 +23,7 @@ package tilemap
 	import entities.Climbers.RopeVerticle;
 	import entities.Enemy.Enemy;
 	import entities.Enemy.TrainingDummy;
+	import entities.Interface.LevelGUI.HUD;
 	import entities.Interface.LevelGUI.TextFlyby;
 	import entities.Platforms.RopeHorizontal;
 	import entities.Player2;
@@ -28,6 +32,7 @@ package tilemap
 	import entities.Sensors.InfoPoint;
 	import entities.Sensors.Trophy;
 	import entities.Traps.SpikeTrap;
+	import entities.Traps.Trap;
 	import entities.Weapons.MeleeWeapons.Sword;
 	import entities.Weapons.RangedWeapons.Shuriken;
 	import flash.display.Bitmap;
@@ -47,6 +52,7 @@ package tilemap
 		
 		private var level:XML;
 		private var box2D:Box2D;
+		private var hud:HUD = new HUD();
 		
 		public function TileMap(zone:int = 0, quest:int = 0) 
 		{
@@ -82,26 +88,65 @@ package tilemap
 			var sTextureAtlas:TextureAtlas = new TextureAtlas(texture, xml);
 			
 			ObjectMakerStarling.FromTiledMap(level, sTextureAtlas);
-			
-			
  
 			var hero:Player2 = getObjectByName("hero") as Player2;
-			var rope:RopeVerticle = getObjectByName("rope") as RopeVerticle;
-			var goal:Goal = getObjectByName("goal") as Goal;
 			var spiketrap:SpikeTrap = getObjectByName("spiketrap") as SpikeTrap;
-			var trophy:Trophy = getObjectByName("trophy") as Trophy;
-			var info:InfoPoint = getObjectByName("infopoint") as InfoPoint;
-			var enemyAINode:EnemyAINode = getObjectByName("enemyainode") as EnemyAINode;
-			var enemy:Enemy = getObjectByName("enemy") as Enemy;
-			var walkRope:RopeHorizontal = getObjectByName("ropewalk") as RopeHorizontal;
+			var trainingDummy:TrainingDummy = getObjectByName("trainingdummy") as TrainingDummy;
+
+			var rope:Vector.<CitrusObject> = getObjectsByType(RopeVerticle);
+			for each (var thisRope:RopeVerticle in rope)
+			{
+				thisRope.onHang.add(heroOnRope);
+				thisRope.onHangEnd.add(heroOffRope);
+				
+			}
+			
+			var goal:Goal = getObjectByName("goal") as Goal;
+			
+			var trap:Vector.<CitrusObject> = getObjectsByType(Trap);
+			for each (var spike:Trap in trap)
+			{
+				spike.onContact.add(trapDamage);
+			}
+			
+			var tropy:Vector.<CitrusObject> = getObjectsByType(Trophy);
+			for each (var trop:Trophy in tropy)
+			{
+				trop.onContact.add(getTrophy);
+			}
+
+			var info:Vector.<CitrusObject> = getObjectsByType(InfoPoint);
+			for each (var inf:InfoPoint in info)
+			{
+				inf.onContact.add(displayInfo);
+			}
+
+			var enemyAINode:Vector.<CitrusObject> = getObjectsByType(EnemyAINode);
+			for each (var enemyAI:EnemyAINode in enemyAINode)
+			{
+				enemyAI.onContact.add(enemyAICall);
+			}
+
+			var enemy:Vector.<CitrusObject> = getObjectsByType(Enemy);
+			for each (var enem:Enemy in enemy)
+			{
+				enem.onTakeDamage.add(enemyDamage);	
+				enem.target = hero;
+			}
+			
+			var walkrope:Vector.<CitrusObject> = getObjectsByType(RopeHorizontal);
+			for each (var walkrop:RopeHorizontal in walkrope)
+			{
+				
+			}
  
 			view.camera.setUp(hero, new MathVector(stage.stageWidth / 2, 100), new Rectangle(0, 0, 2500, 2500), new MathVector(.25, .05));
 			
-			var enemy2:TrainingDummy = new TrainingDummy("enemy", { width:50, height:100 } );
-			enemy2.x = hero.x + 300;
-			enemy2.y = hero.y;
+			//var enemy2:TrainingDummy = new TrainingDummy("enemy", { width:50, height:100 } );
+			//enemy2.x = hero.x + 300;
+			//enemy2.y = hero.y;
 			
-			add(enemy2);
+			//add(enemy2);
 			
 			hero.onDeath.add(defeat);
 			hero.onFireWeapon.add(fireWeapon);
@@ -109,24 +154,25 @@ package tilemap
 			hero.doneSwinging.add(doneSwinging);
 			hero.onTakeDamage.add(heroDamage);
 			
-			rope.onHang.add(heroOnRope);
-			rope.onHangEnd.add(heroOffRope);
 			
 			goal.onContact.add(victoryTime);
 			
-			spiketrap.onContact.add(trapDamage);
 			
-			trophy.onContact.add(getTrophy);
 			
-			info.onContact.add(displayInfo);
 			
-			enemyAINode.onContact.add(enemyAICall);
 			
-			//addChild(new TextFlyby(750, 2350));
-			var borderbmp:Bitmap = new Assets.LEVELBG();
-			var borderTex:Texture = Texture.fromBitmap(borderbmp);
+
 			
+			hud.playerHP = hero.playerHP;
+			
+			addChild(hud);
+			
+			//var borderbmp:Bitmap = new Assets.LEVELBG();
+			//var borderTex:Texture = Texture.fromBitmap(borderbmp);
+
 			//addChild(new Image(borderTex));
+			
+			//testFunc();
 			
 			var keyboard:Keyboard = CitrusEngine.getInstance().input.keyboard as Keyboard;
 			keyboard.addKeyAction("left", Keyboard.LEFT, 1);
@@ -181,22 +227,25 @@ package tilemap
 			trace("Ain't Swingin'");
 		}
 		
-		public function heroDamage(textX:int, textY:int, textString:String):void
+		public function heroDamage(target:*, damage:int):void
 		{
-			var damageTextContainer:CitrusSprite;
-			damageTextContainer = new CitrusSprite("dmgtxt", { x:textX, y:textY, view: new Sprite() } );
-			var damageText:TextFlyby = new TextFlyby(0, 0);
-			damageText.textColor = 0xFF0000;
-			damageText.textString = textString;
-			trace("Flyby Should say: " + textString);
-			(damageTextContainer.view as Sprite).addChild(damageText);
-			add(damageTextContainer);
+			hud.playerHP = target.playerHP;
+			hud.marqueUpdate("You have taken " + damage + " points of damage");
+			//trace("Hero Damage Fired");
 		}
 		
-		public function doneSwinging():void
+		public function enemyDamage(target:*, damage:int):void
 		{
-			var rope:* = getObjectByName("rope");
+			hud.enemyMaxHP = target.maxHitpoints;
+			hud.enemyHP = target.hitpoints;
+			hud.enemyName = target.enemyName;
+			hud.marqueUpdate(target.enemyName + " has taken " + damage + " points of damage");
+		}
+		
+		public function doneSwinging(rope:*):void
+		{
 			trace("Done Swingin'");
+			trace(rope);
 			rope.removeJoint();
 		}
 		
@@ -247,6 +296,13 @@ package tilemap
 		public function defeat():void
 		{
 			trace("Defeated");
+		}
+		
+		override public function update(timeDelta:Number):void
+		{
+
+			super.update(timeDelta);
+
 		}
 		
 	}
