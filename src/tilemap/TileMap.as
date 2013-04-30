@@ -33,8 +33,10 @@ package tilemap
 	import entities.Sensors.Trophy;
 	import entities.Traps.SpikeTrap;
 	import entities.Traps.Trap;
-	import entities.Weapons.MeleeWeapons.Sword;
-	import entities.Weapons.RangedWeapons.Shuriken;
+	import entities.Weapons.InventoryHandler;
+	import entities.Weapons.Items.AttackItem;
+	import entities.Weapons.MeleeWeapons.*;
+	import entities.Weapons.RangedWeapons.*;
 	import flash.display.Bitmap;
 	import flash.geom.Rectangle;
 	import starling.display.Image;
@@ -53,6 +55,7 @@ package tilemap
 		private var level:XML;
 		private var box2D:Box2D;
 		private var hud:HUD = new HUD();
+		private var invHandler:InventoryHandler = new InventoryHandler();
 		
 		public function TileMap(zone:int = 0, quest:int = 0) 
 		{
@@ -131,6 +134,8 @@ package tilemap
 			for each (var enem:Enemy in enemy)
 			{
 				enem.onTakeDamage.add(enemyDamage);	
+				enem.onMeleeWeapon.add(swingWeapon);
+				enem.onRangedWeapon.add(fireWeapon);
 				enem.target = hero;
 			}
 			
@@ -153,6 +158,7 @@ package tilemap
 			hero.onMeleeWeapon.add(swingWeapon);
 			hero.doneSwinging.add(doneSwinging);
 			hero.onTakeDamage.add(heroDamage);
+			hero.onAttackItem.add(attackItem);
 			
 			
 			goal.onContact.add(victoryTime);
@@ -186,6 +192,7 @@ package tilemap
 			keyboard.addKeyAction("jump", Keyboard.SPACE, 1);
 			keyboard.addKeyAction("shoot", Keyboard.X, 1);
 			keyboard.addKeyAction("melee", Keyboard.Z, 1);
+			keyboard.addKeyAction("1", Keyboard.NUMBER_1, 1);
 		}
 		
 		public function displayInfo():void
@@ -249,9 +256,16 @@ package tilemap
 			rope.removeJoint();
 		}
 		
+		public function attackItem(weaponType:String, direction:String, enemyWeapon:Boolean, params:Object = null):void
+		{
+			var itemFired:AttackItem = new AttackItem(weaponType, direction, enemyWeapon, params);
+			add(itemFired);
+		}
+		
 		public function fireWeapon(weaponType:String, direction:String, enemyWeapon:Boolean, params:Object = null):void
 		{
-			var firedWeapon:Shuriken = new Shuriken(weaponType, direction, enemyWeapon, params);
+			var weaponClass:* = invHandler.rangedWeapon(weaponType);
+			var firedWeapon:* = new weaponClass(weaponType, direction, enemyWeapon, params);
 			add(firedWeapon);
 			firedWeapon.onExplode.add(weaponDamage);
 			//trace(params);
@@ -259,13 +273,14 @@ package tilemap
 		
 		public function swingWeapon(WeaponType:String, thrustDirection:String, enemyWeapon:Boolean, faceRight:Boolean, target:Box2DPhysicsObject):void
 		{
-			var meleeWeapon:Sword;
+			var weaponClass:* = invHandler.meleeWeapon(WeaponType);
+			var meleeWeapon:*;
 			
 			var meleeJointDef:b2WeldJointDef;
 			var meleeJoint:b2WeldJoint;
 			
-			if (faceRight) meleeWeapon = new Sword(faceRight, thrustDirection, target.x + target.width, target.y, target, enemyWeapon);
-			else meleeWeapon = new Sword(faceRight, thrustDirection, target.x - target.width, target.y, target, enemyWeapon);
+			if (faceRight) meleeWeapon = new weaponClass(faceRight, thrustDirection, target.x + target.width, target.y, target, enemyWeapon);
+			else meleeWeapon = new weaponClass(faceRight, thrustDirection, target.x - target.width, target.y, target, enemyWeapon);
 			add(meleeWeapon);
 			
 			meleeWeapon.onDestroy.add(destroyMeleeWeapon);

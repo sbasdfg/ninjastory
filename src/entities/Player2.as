@@ -13,6 +13,7 @@ package entities
 	import citrus.objects.platformer.box2d.Sensor;
 	import entities.Enemy.Enemy;
 	import entities.Interface.LevelGUI.TextFlyby;
+	import entities.Weapons.InventoryHandler;
 	import entities.Weapons.MeleeWeapons.MeleeWeapon;
 	import entities.Weapons.MeleeWeapons.Sword;
 	import entities.Weapons.RangedWeapons.Shuriken;
@@ -140,6 +141,8 @@ package entities
 		//Dispatch when the player jumps off rope
 		public var doneSwinging:Signal;
 		
+		public var onAttackItem:Signal;
+		
 		//Fall damage variables
 		protected var _lastY:Number = 0;
 		protected var _fallAmount:Number = 0;
@@ -167,15 +170,21 @@ package entities
 		protected var _isWallClimbing:Boolean = false;
 		
 		
-		protected var _meleeWeapon:Sword;
+		protected var _meleeWeapon:String = "sword";
 		protected var _meleeJointDef:b2WeldJointDef;
 		protected var _meleeJoint:b2WeldJoint;
 		public var _usingMeleeWeapon:Boolean = false;
 		public var _isSwinging:Boolean = false;
 		protected var currentRope:*;
+		protected var _specialTimeoutID:uint = 0;
+		protected var _specialActive:Boolean = false;
 
 		//Damage Flyby
 		private var _damageContainer:CitrusSprite;
+		
+		//Inventroy Handler
+		protected var _rangedWeapon:String = "shuriken";
+		
 		
 		// Player Statistics
 		protected var _hitpoints:int = Globals.playerHP;
@@ -201,6 +210,7 @@ package entities
 			onDeath = new Signal();
 			onFireWeapon = new Signal(String, String, Boolean, Object);
 			onMeleeWeapon = new Signal(String, String, Boolean, Boolean, Box2DPhysicsObject);
+			onAttackItem = new Signal(String, String, Boolean, Object);
 			doneSwinging = new Signal(Box2DPhysicsObject);
 			//WeaponType:String, thrustDirection:String, enemyWeapon:Boolean, faceRight:Boolean, target:Box2DPhysicsObject
 			
@@ -225,8 +235,10 @@ package entities
 			onTakeDamage.removeAll();
 			onAnimationChange.removeAll();
 			onDeath.removeAll();
+			onFireWeapon.removeAll();
 			onMeleeWeapon.removeAll();
 			doneSwinging.removeAll();
+			onAttackItem.removeAll();
 			
 			super.destroy();
 		}
@@ -448,6 +460,24 @@ package entities
 					onFireWeapon.dispatch("shuriken", direction, false, rangedWeaponParams);
 				}
 				
+				if (_ce.input.justDid("1", inputChannel) && !_isSliding && !_isSwinging && !_isWallKicking && !_specialActive)
+				{
+					var attackItemParams:Object;
+					var itemDirection:String;
+					
+					if (!_inverted)
+					{
+						attackItemParams = { x:x + width, y:y, width:25, height:25, angle:345, explodeDuration:100, speed:Math.abs(velocity.x) };
+					}
+					else
+					{
+						attackItemParams = { x:x - width, y:y, width:25, height:25, angle:-15, explodeDuration:100, speed:Math.abs(velocity.x) };
+					}
+					_specialActive = true;
+					_specialTimeoutID = setTimeout(resetSpecial, 100);
+					onAttackItem.dispatch("flashbomb", itemDirection, false, attackItemParams);
+				}
+				
 				
 				if (_ce.input.justDid("melee", inputChannel)) //trace (canUseSword, _usingMeleeWeapon);
 				if (canUseSword && _ce.input.justDid("melee", inputChannel) && !_usingMeleeWeapon && !_isSwinging && !_isWallKicking)
@@ -456,27 +486,27 @@ package entities
 					_usingMeleeWeapon = true;
 					if (!_playerMovingHero && !_crouching && !_lookingup && _onGround) 
 					{
-						onMeleeWeapon.dispatch("sword", "striaght", false, !_inverted, this);
+						onMeleeWeapon.dispatch(_meleeWeapon, "striaght", false, !_inverted, this);
 						_controlsEnabled = false;
 					}
 					else if (_playerMovingHero && _onGround)
 					{
-						onMeleeWeapon.dispatch("sword", "straight", false, !_inverted, this);
+						onMeleeWeapon.dispatch(_meleeWeapon, "straight", false, !_inverted, this);
 						_controlsEnabled = false;
 					}
 					else if (!_playerMovingHero && _lookingup)
 					{
-						onMeleeWeapon.dispatch("sword", "up", false, !_inverted, this);
+						onMeleeWeapon.dispatch(_meleeWeapon, "up", false, !_inverted, this);
 						_controlsEnabled = false;
 					}
 					else if (!_playerMovingHero && _crouching)
 					{
-						onMeleeWeapon.dispatch("sword", "down", false, !_inverted, this);
+						onMeleeWeapon.dispatch(_meleeWeapon, "down", false, !_inverted, this);
 						_controlsEnabled = false;
 					}
 					else if (!_onGround)
 					{
-						onMeleeWeapon.dispatch("sword", "sweep", false, !_inverted, this);
+						onMeleeWeapon.dispatch(_meleeWeapon, "sweep", false, !_inverted, this);
 					}
 					else _usingMeleeWeapon = false;
 					
@@ -496,6 +526,11 @@ package entities
 			}
 			
 			updateAnimation();
+		}
+		
+		public function resetSpecial():void
+		{
+			_specialActive = false;
 		}
 		
 		public function grabRope(rope:*):void
@@ -597,9 +632,6 @@ package entities
 			var other:IBox2DPhysicsObject = Box2DUtils.CollisionGetOther(this, contact);
 			var otherType:String = (other as Box2DPhysicsObject).name;
 
-			var heroTop:Number = y;
-			var objectBottom:Number = other.y + (other.height / 2);
-
 			if (_victory) contact.SetEnabled(false);
 			if (otherType == "ropewalk" && !Globals.canTightRopeWalk) contact.SetEnabled(false);
 			//trace(otherType);
@@ -610,8 +642,6 @@ package entities
 			var collider:Box2DPhysicsObject = Box2DUtils.CollisionGetOther(this, contact) as Box2DPhysicsObject;
 			var colliderType:String = (collider.name)
 			
-			
-
 			if (collider is _enemyClass)
 			{
 				if (!_hurt)

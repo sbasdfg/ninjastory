@@ -8,6 +8,7 @@ package entities.Enemy
 	import citrus.math.MathVector;
 	import citrus.objects.Box2DPhysicsObject;
 	import citrus.objects.platformer.box2d.Platform;
+	import citrus.objects.platformer.box2d.Sensor;
 	import citrus.physics.box2d.Box2DShapeMaker;
 	import citrus.physics.box2d.Box2DUtils;
 	import citrus.physics.box2d.IBox2DPhysicsObject;
@@ -16,6 +17,7 @@ package entities.Enemy
 	import entities.Player2;
 	import entities.Weapons.RangedWeapons.RangedWeapon;
 	import flash.geom.Point;
+	import flash.sampler.NewObjectSample;
 	import org.osflash.signals.Signal;
 	
 	import flash.utils.clearTimeout;
@@ -88,12 +90,11 @@ package entities.Enemy
 		protected var _canMove:Boolean = false;
 		protected var _canRanged:Boolean = false;
 		protected var _canMelee:Boolean = false;
-		protected var _canJump:Boolean = false;
-		
+		protected var _canJump:Boolean = false;		
 		
 		// Flags to determine what the enemy is doing
 		protected var _isMoving:Boolean = false;
-		protected var _onGround:Boolean = false;
+		protected var _onGround:Boolean = true;
 		
 		// If the enemy is allowed to look for the player
 		protected var _visionVertical:Number = 0;
@@ -105,24 +106,62 @@ package entities.Enemy
 		protected var _chasingTimer:Number = 0;
 		protected var _isChasing:Boolean = false;
 		
+		// If the enemy is allowed to melee Attack
+		public var _usingMeleeWeapon:Boolean = false;
+		public var onMeleeWeapon:Signal;
+		protected var meleeWeapon:String = "null";
+		protected var _isMeleeActive:Boolean = true;
+		protected var _activeMeleeTimout:uint = 0;
+		
+		// If the enemy is alloed to ranged Attack
+		protected var _usingRangedWeapon:Boolean = false;
+		public var onRangedWeapon:Signal;
+		protected var _rangedWeapon:String = "null";
+		protected var _rangedDelay:Number;
+		protected var _activeRangedTimeout:uint = 0;
+		
 		public var onTakeDamage:Signal;
+		public var onDeath:Signal;
+		
+		protected var _groundContacts:Array = [];
+		protected var _friction:Number = 0.75;
+		protected var _combinedGroundAngle:Number = 0;
+		
+		//Fall damage variables
+		protected var _lastY:Number = 0;
+		protected var _fallAmount:Number = 0;
+		protected var _safeDistance:int = 15;
+		protected var _fallDivisor:int = 25;
+
 		
 		public function Enemy(name:String, params:Object = null) 
 		{
 			updateCallEnabled = true;
+			_preContactCallEnabled = true;
 			_beginContactCallEnabled = true;
+			_endContactCallEnabled = true;
 			
 			super(name, params);
 			
 			
 			onTakeDamage = new Signal(Box2DPhysicsObject, int);
+			onDeath = new Signal();
+			onMeleeWeapon = new Signal(String, String, Boolean, Boolean, Box2DPhysicsObject);
+			onRangedWeapon = new Signal(String, String, Boolean, Object);
 			
 			if (startingDirection == "left") _inverted = true;
+		}
+		
+		protected function killEnemy():void
+		{
+			onDeath.dispatch();
 		}
 		
 		override public function destroy():void
 		{
 			clearTimeout(_hurtTimeoutID);
+			onTakeDamage.removeAll();
+			onDeath.removeAll();
 			
 			super.destroy();
 		}
@@ -169,13 +208,39 @@ package entities.Enemy
 			else if (value is Class) _enemyClass = value;
 		}
 		
+		public function get onGround():Boolean
+		{
+			return _onGround;
+		}
+		
+
+		public function get friction():Number
+		{
+			return _friction;
+		}
+		
+		[Inscpetable(defaultValue = "0.75")]
+		public function set friction(value:Number):void
+		{
+			_friction = value;
+			
+			if (_fixture)
+			{
+				_fixture.SetFriction(_friction);
+			}
+
+		}
+		
 		override public function update(timeDelta:Number):void
 		{
 			super.update(timeDelta);
+
+			var velocity:b2Vec2 = _body.GetLinearVelocity();			
 			
 			var playSeen:Boolean = false;
+			_isMoving = false;
 			
-			if (_looksForPlayer) playSeen = checkLOS();
+			if (_looksForPlayer && _chasingTimer < .2) playSeen = checkLOS();
 			//trace(playSeen, _chasingTimer);
 			if (playSeen)
 			{
@@ -190,27 +255,119 @@ package entities.Enemy
 			{
 				_chasingTimer -= timeDelta;
 				if (_chasingTimer < 0) _isChasing = false;
-				if (target.x < x) moveLeft();
-				else moveRight();
+				if (target.x < x) moveLeft(velocity);
+				else moveRight(velocity);
 			}
+			
+
+			if (_canMelee && !_usingMeleeWeapon &&_isMeleeActive)
+			{
+				if (checkLOS())
+				{
+					//trace(_inverted, x, target.x);
+					if (_inverted)
+					{
+						if (x < target.x + 100) 
+						{
+							onMeleeWeapon.dispatch(meleeWeapon, "straight", true, !_inverted, this)
+							_usingMeleeWeapon = true;
+							_isMeleeActive = false;
+							//trace("Swing Weapon");
+						}
+					}
+					else
+					{
+						if (x > target.x - 100) 
+						{
+							onMeleeWeapon.dispatch(meleeWeapon, "straight", true, !_inverted, this)
+							_usingMeleeWeapon = true;
+							_isMeleeActive = false;
+							//trace("Swing Weapon");
+						}
+					}
+				}
+			}
+			
+			var rangedWeaponParams:Object;
+			
+			if (_canRanged && !_usingRangedWeapon)
+			{
+				trace("Ranged Attack");
+				if (checkLOS())
+				{
+					if (!_inverted)
+					{
+						rangedWeaponParams =  { x:x +width, y:y, width:25, height:25, speed:15, angle:0, explodeDuration:100, fuseDuration:5000 };
+					}
+					else
+					{
+						rangedWeaponParams =  { x:x -width, y:y, width:25, height:25, speed:15, angle:180, explodeDuration:100, fuseDuration:5000 };
+					}
+					onRangedWeapon.dispatch(_rangedWeapon, "normal", true, rangedWeaponParams);
+					_usingRangedWeapon = true;
+					_activeRangedTimeout = setTimeout(resetRanged, _rangedDelay);
+				}
+			}
+			
+			//trace(_usingMeleeWeapon, _isMeleeActive);
+			
+			if (!_usingMeleeWeapon && !_isMeleeActive)
+			{
+				_activeMeleeTimout = setTimeout(resetMelee, 500);
+			}
+			
+			//trace(_isChasing);
+			if (_isMoving) _fixture.SetFriction(0);
+			else _fixture.SetFriction(_friction);
+			
+			//trace(velocity.x);
+			
+			
+			if (velocity.x > maxVelocity) velocity.x = maxVelocity;
+			else if (velocity.x < -maxVelocity) velocity.x = -maxVelocity;
 			
 			updateAnimation();
 		}
 		
-		protected function moveRight():void
+		protected function resetRanged():void
 		{
-			_isMoving = false;
-			trace("Move Right");
+			_usingRangedWeapon = false;
+		}
+		
+		protected function resetMelee():void
+		{
+			_isMeleeActive = true;
+		}
+		
+		protected function moveRight(velocity:b2Vec2):b2Vec2
+		{
 			if (_onGround)
 			{
 				_isMoving = true;
-				
+				velocity.Add(getSlopeBasedMoveAngle());
 			}
+			return velocity;
 		}
 		
-		protected function moveLeft():void
+		protected function moveLeft(velocity:b2Vec2):b2Vec2
 		{
-			trace("Move Left");
+			if (_onGround)
+			{
+				_isMoving = true;
+				velocity.Subtract(getSlopeBasedMoveAngle());
+			}
+			return velocity;
+		}
+		
+		public function getWalkingSpeed():Number
+		{
+			var groundVelocityX:Number = 0;
+			for each (var groundContact:b2Fixture in _groundContacts)
+			{
+				groundVelocityX += groundContact.GetBody().GetLinearVelocity().x;
+			}
+
+			return _body.GetLinearVelocity().x - groundVelocityX;
 		}
 		
 		protected function checkLOS():Boolean
@@ -218,7 +375,7 @@ package entities.Enemy
 			var playerXRange:Boolean = false;
 			var playerYRange:Boolean = false;
 			var playerLOS:Boolean = false;
-			if (!_inverted)
+			if (_inverted)
 			{
 				if (target.x < this.x && Math.abs(target.x - this.x) < _visionHorizontal) playerXRange = true;
 			}
@@ -243,6 +400,7 @@ package entities.Enemy
 					if (returnTrue) playerLOS = true;
 				}
 			}			
+			//trace(playerLOS);
 			return playerLOS;
 		}
 		
@@ -281,10 +439,12 @@ package entities.Enemy
 			_inverted = !_inverted;
 		}
 		
-		override protected function createBody():void
+		override protected function defineBody():void
 		{
-			super.createBody();
-			_body.SetFixedRotation(true);
+			super.defineBody();
+
+			_bodyDef.fixedRotation = true;
+			_bodyDef.allowSleep = false;
 		}
 		
 		override protected function createShape():void
@@ -306,7 +466,8 @@ package entities.Enemy
 		override protected function defineFixture():void
 		{
 			super.defineFixture();
-			_fixtureDef.friction = 0;
+			_fixtureDef.friction = _friction;
+			_fixtureDef.restitution = 0;
 			_fixtureDef.filter.categoryBits = PhysicsCollisionCategories.Get("BadGuys");
 			_fixtureDef.filter.maskBits = PhysicsCollisionCategories.GetAllExcept("Items");
 			
@@ -335,22 +496,108 @@ package entities.Enemy
 			{
 				hurt(Globals.playerHP / 10, collider.x);
 			}
-				
+			
+			if (contact.GetManifold().m_localPoint && !(collider is Sensor)) //The normal property doesn't come through all the time. I think doesn't come through against sensors.
+			{				
+				var collisionAngle:Number = (((new MathVector(contact.normal.x, contact.normal.y).angle) * 180 / Math.PI) + 360) % 360;// 0º <-> 360º
 
-			if (_body.GetLinearVelocity().x < 0 && (contact.GetFixtureA() == _rightSensorFixture || contact.GetFixtureB() == _rightSensorFixture)) return;
-			if (_body.GetLinearVelocity().x < 0 && (contact.GetFixtureA() == _leftSensorFixture || contact.GetFixtureB() == _leftSensorFixture)) return;
-			if (contact.GetManifold().m_localPoint)
-			{
-				var normalPoint:Point = new Point(contact.GetManifold().m_localPoint.x, contact.GetManifold().m_localPoint.y);
-				var collisionAngle:Number = new MathVector(normalPoint.x, normalPoint.y).angle * 180 / Math.PI;
-				
-			if ((collider is Platform && collisionAngle != 90) || collider is Enemy) turnAround();
+				if ((collisionAngle > 45 && collisionAngle < 135))
+				{
+					_groundContacts.push(collider.body.GetFixtureList());
+					_onGround = true;
+					
+					if (_fallAmount / _fallDivisor > _safeDistance)
+					{
+						var hurtDirection:int;
+						if (_inverted) hurtDirection = x + 1;
+						else hurtDirection = x -1;
+						hurt(int(_fallAmount / _fallDivisor - _safeDistance), hurtDirection);
+					}
+					
+					_fallAmount = 0;
+					
+					updateCombinedGroundAngle();
+				}
 			}
+		}
+
+		override public function handleEndContact(contact:b2Contact):void {
+
+			var collider:IBox2DPhysicsObject = Box2DUtils.CollisionGetOther(this, contact);
+
+			//Remove from ground contacts, if it is one.
+			var index:int = _groundContacts.indexOf(collider.body.GetFixtureList());
+			if (index != -1)
+			{
+				_groundContacts.splice(index, 1);
+				if (_groundContacts.length == 0)
+					_onGround = false;
+				updateCombinedGroundAngle();
+			}
+		}
+		
+		protected function getSlopeBasedMoveAngle():b2Vec2
+		{
+			return Box2DUtils.Rotateb2Vec2(new b2Vec2(acceleration, 0), _combinedGroundAngle);
+		}
+
+		protected function updateCombinedGroundAngle():void
+		{
+			_combinedGroundAngle = 0;
+
+			if (_groundContacts.length == 0)
+				return;
+
+			for each (var contact:b2Fixture in _groundContacts)
+				var angle:Number = contact.GetBody().GetAngle();
+
+			var turn:Number = 45 * Math.PI / 180;
+			angle = angle % turn;
+			_combinedGroundAngle += angle;
+			_combinedGroundAngle /= _groundContacts.length;
+		}
+		
+		public function setVictory():void
+		{
+			_body.SetLinearDamping(500);
 		}
 		
 		protected function updateAnimation():void
 		{
-			_animation = "walk";
+			var prevAnimation:String = _animation;
+			
+			var walkingSpeed:Number = getWalkingSpeed();
+
+			if (_hurt)
+				_animation = "hurt";
+
+			else if (!_onGround) {
+
+				_animation = "jump";
+
+				if (walkingSpeed < -acceleration)
+					_inverted = true;
+				else if (walkingSpeed > acceleration)
+					_inverted = false;
+			}
+
+			else {
+
+				if (walkingSpeed < -acceleration) {
+					_inverted = true;
+					_animation = "walk";
+
+				} else if (walkingSpeed > acceleration) {
+
+					_inverted = false;
+					_animation = "walk";
+
+				} else
+					_animation = "idle";
+			}
+
+			//if (prevAnimation != _animation)
+				//onAnimationChange.dispatch();		
 		}
 		
 		protected function endHurtState():void

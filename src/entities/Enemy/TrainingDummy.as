@@ -17,7 +17,10 @@ package entities.Enemy
 			_visionVertical = 75;
 			_chasingTime = 5;
 			_looksForPlayer = true;
-			_canMove = true;
+			//_canMove = true;
+			//_canMelee = true;
+			//_canRanged = true;
+			//_rangedDelay = 5000;
 		}
 		
 	}
